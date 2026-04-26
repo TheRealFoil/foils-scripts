@@ -1,0 +1,225 @@
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window = Rayfield:CreateWindow({
+   Name = "Lineage Piece",
+   LoadingTitle = "Lineage Piece",
+   LoadingSubtitle = "by Foil",
+   ConfigurationSaving = { Enabled = false },
+   KeySystem = false 
+})
+
+-- Stable Quest Data (Only Mobs/Mini-Bosses with verified IDs)
+local QuestData = {
+    ["Bandit"] = 1, ["Bandit Leader"] = 2, ["Monkey"] = 3, ["Shank"] = 4,
+    ["Sorcerer Student"] = 5, ["Miwa"] = 6, ["Mihawk"] = 7, ["Snow Bandit"] = 8,
+    ["National Level Hunter"] = 9
+}
+
+local Settings = {
+    AutoFarm = false, AutoClick = false, AutoQuest = false,
+    AutoEquip = false, Distance = 5, Position = "Behind",
+    TargetList = {}, 
+    WeaponName = "Dual Katana"
+}
+
+-- Comprehensive Target Validation
+local function IsValid(model)
+    if not model or not model.Parent then return false end
+    local hum = model:FindFirstChildOfClass("Humanoid")
+    if not hum or hum.Health <= 0 then return false end
+    if not model:FindFirstChild("HumanoidRootPart") then return false end
+    return true
+end
+
+-- Recursive function to find living targets in any boss folder
+local function ScanBossFolders(targetName)
+    local bossFolder = workspace:FindFirstChild("Boss")
+    if not bossFolder then return nil end
+    
+    -- Checks subfolders like BossSummoner or ServerTimeBossSpawner
+    for _, sub in pairs(bossFolder:GetDescendants()) do
+        if sub.Name == targetName and IsValid(sub) then
+            return sub
+        elseif sub:IsA("Model") and sub.Name == targetName then
+            -- Check for nested models
+            for _, nested in pairs(sub:GetChildren()) do
+                if nested.Name == targetName and IsValid(nested) then
+                    return nested
+                end
+            end
+        end
+    end
+    return nil
+end
+
+-- Find Best Target (Prioritizing Bosses over Enemies)
+local function FindPriorityTarget()
+    local lp = game.Players.LocalPlayer
+    local char = lp.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return nil end
+    
+    local potentialTargets = {}
+
+    for _, selectedName in pairs(Settings.TargetList) do
+        -- 1. Check Boss Folders First (Priority 2)
+        local bossObj = ScanBossFolders(selectedName)
+        if bossObj then
+            table.insert(potentialTargets, {model = bossObj, priority = 2})
+        else
+            -- 2. Check Enemies Folder (Priority 1)
+            local enemyFolder = workspace:FindFirstChild("Enemies")
+            if enemyFolder then
+                local item = enemyFolder:FindFirstChild(selectedName)
+                if item then
+                    local target = IsValid(item) and item or (item:FindFirstChild(selectedName) and IsValid(item[selectedName]) and item[selectedName])
+                    if target then
+                        table.insert(potentialTargets, {model = target, priority = 1})
+                    end
+                end
+            end
+        end
+    end
+
+    -- Sort by Priority
+    table.sort(potentialTargets, function(a, b) return a.priority > b.priority end)
+
+    return potentialTargets[1] and potentialTargets[1].model or nil
+end
+
+local function GetFullList()
+    local mobs = {}
+    -- Scan Enemies
+    local eFolder = workspace:FindFirstChild("Enemies")
+    if eFolder then
+        for _, v in pairs(eFolder:GetChildren()) do
+            if not table.find(mobs, v.Name) then table.insert(mobs, v.Name) end
+        end
+    end
+    -- Scan All Boss Sub-Folders
+    local bFolder = workspace:FindFirstChild("Boss")
+    if bFolder then
+        for _, v in pairs(bFolder:GetDescendants()) do
+            if v:IsA("Model") and v:FindFirstChildOfClass("Humanoid") then
+                if not table.find(mobs, v.Name) then table.insert(mobs, v.Name) end
+            end
+        end
+    end
+    table.sort(mobs)
+    return mobs
+end
+
+local FarmTab = Window:CreateTab("Farm Settings", 4483362458)
+
+local MobDropdown = FarmTab:CreateDropdown({
+   Name = "Select Targets",
+   Options = GetFullList(),
+   CurrentOption = {},
+   MultipleOptions = true,
+   Callback = function(Options) Settings.TargetList = Options end,
+})
+
+FarmTab:CreateButton({
+   Name = "Refresh List",
+   Callback = function() MobDropdown:Refresh(GetFullList()) end,
+})
+
+FarmTab:CreateSection("Combat")
+FarmTab:CreateInput({
+   Name = "Weapon Name",
+   PlaceholderText = "Dual Katana",
+   CurrentValue = "Dual Katana",
+   Callback = function(Text) Settings.WeaponName = Text end,
+})
+FarmTab:CreateToggle({
+   Name = "Auto Quest",
+   CurrentValue = false,
+   Callback = function(Value) Settings.AutoQuest = Value end,
+})
+FarmTab:CreateToggle({
+   Name = "Auto Equip Weapon",
+   CurrentValue = false,
+   Callback = function(Value) Settings.AutoEquip = Value end,
+})
+FarmTab:CreateToggle({
+   Name = "Auto M1 Attack",
+   CurrentValue = false,
+   Callback = function(Value) Settings.AutoClick = Value end,
+})
+
+FarmTab:CreateSection("Movement")
+FarmTab:CreateDropdown({
+   Name = "Farm Position",
+   Options = {"Behind", "Above", "Under"},
+   CurrentOption = "Behind",
+   Callback = function(Option) Settings.Position = Option[1] end,
+})
+FarmTab:CreateSlider({
+   Name = "Distance Offset",
+   Range = {0, 25},
+   Increment = 1,
+   CurrentValue = 5,
+   Callback = function(Value) Settings.Distance = Value end,
+})
+FarmTab:CreateToggle({
+   Name = "START AUTO FARM",
+   CurrentValue = false,
+   Callback = function(Value) Settings.AutoFarm = Value end,
+})
+
+local CurrentTarget = nil
+
+-- Quest Loop
+task.spawn(function()
+    local QuestEvent = game:GetService("ReplicatedStorage"):WaitForChild("Packages"):WaitForChild("_Index")["sleitnick_net@0.2.0"].net["RE/QuestEvent"]
+    while task.wait(3) do
+        if Settings.AutoFarm and Settings.AutoQuest and #Settings.TargetList > 0 then
+            local qId = QuestData[Settings.TargetList[1]]
+            if qId then QuestEvent:FireServer("Request", { Id = qId }) end
+        end
+    end
+end)
+
+-- Main Farm Loop
+game:GetService("RunService").Heartbeat:Connect(function()
+    if Settings.AutoFarm and #Settings.TargetList > 0 then
+        local lp = game.Players.LocalPlayer
+        if not lp.Character or not lp.Character:FindFirstChild("HumanoidRootPart") then return end
+
+        if not IsValid(CurrentTarget) then
+            CurrentTarget = FindPriorityTarget()
+        end
+
+        if CurrentTarget and CurrentTarget:FindFirstChild("HumanoidRootPart") then
+            local targetRP = CurrentTarget.HumanoidRootPart
+            local finalCF
+            
+            if Settings.Position == "Behind" then
+                finalCF = targetRP.CFrame * CFrame.new(0, 0, Settings.Distance)
+            elseif Settings.Position == "Above" then
+                finalCF = targetRP.CFrame * CFrame.new(0, Settings.Distance, 0) * CFrame.Angles(math.rad(-90), 0, 0)
+            elseif Settings.Position == "Under" then
+                finalCF = targetRP.CFrame * CFrame.new(0, -Settings.Distance, 0) * CFrame.Angles(math.rad(90), 0, 0)
+            end
+
+            lp.Character.HumanoidRootPart.Velocity = Vector3.new(0,0,0)
+            lp.Character.HumanoidRootPart.CFrame = finalCF
+        end
+    end
+end)
+
+-- Combat Loop
+task.spawn(function()
+    local ActionRemote = game:GetService("ReplicatedStorage"):WaitForChild("Packages"):WaitForChild("_Index")["sleitnick_net@0.2.0"].net["RE/ActionRemote"]
+    while task.wait() do
+        if Settings.AutoFarm and IsValid(CurrentTarget) then
+            local lp = game.Players.LocalPlayer
+            if Settings.AutoEquip and lp.Character then
+                local tool = lp.Backpack:FindFirstChild(Settings.WeaponName)
+                if tool then tool.Parent = lp.Character end
+            end
+            if Settings.AutoClick then
+                ActionRemote:FireServer("M1", Settings.WeaponName)
+            end
+        end
+    end
+end)
