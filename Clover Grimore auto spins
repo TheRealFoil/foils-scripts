@@ -1,0 +1,74 @@
+local targetRace = "Paladin"
+local player = game:GetService("Players").LocalPlayer
+local spinRemote = game:GetService("ReplicatedStorage"):WaitForChild("Events"):WaitForChild("Spins")
+
+_G.AutoSpin = true -- Set to false to stop the script manually
+
+print("Starting auto-spin for: " .. targetRace)
+
+while _G.AutoSpin do
+    -- Check the current race attribute from your screenshot
+    local currentRace = player:GetAttribute("Race")
+    
+    if currentRace == targetRace then
+        print("Success! You are now an " .. targetRace)
+        _G.AutoSpin = false
+        break
+    end
+    
+    -- Fire the spin event
+    spinRemote:FireServer("Race")
+    
+    -- Wait a short duration to avoid rate-limiting/kicking
+    task.wait(0.5) 
+end
+
+Auto Spin race
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local SpinEvent = ReplicatedStorage:WaitForChild("Events"):WaitForChild("Spins")
+
+-- Configuration
+local AutoSpin = true
+local Targets = {["Time Magic"] = false, ["Light"] = true}
+local DelayBetweenSpins = 0.1 -- Adjust for speed (0.1 is very fast)
+
+-- Function to handle the dual-remote requirement
+local function performSpin()
+    -- Standard spin remote
+    SpinEvent:FireServer("Grimoire")
+    
+    -- Secondary "Insta" remote
+    SpinEvent:FireServer("Grimoire", true)
+end
+
+task.spawn(function()
+    print("Auto-Spin Started: Searching for Time Magic and Light...")
+    
+    while AutoSpin do
+        -- Check the result from the Player Attribute shown in image_ae4f94.png
+        local currentResult = LocalPlayer:GetAttribute("GrimoireSpinResult")
+        local spinsLeft = LocalPlayer:GetAttribute("GrimoireSpins") or 0
+
+        -- Logic: Stop if we hit a target
+        if currentResult and Targets[currentResult] then
+            print("Target Acquired: " .. tostring(currentResult))
+            AutoSpin = false
+            break
+        end
+
+        -- Logic: Spin if we have resources
+        if spinsLeft > 0 then
+            performSpin()
+        else
+            warn("Out of spins!")
+            break
+        end
+
+        task.wait(DelayBetweenSpins)
+    end
+end)
+
+Auto spin grimore
